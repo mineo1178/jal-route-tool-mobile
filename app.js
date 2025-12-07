@@ -51,6 +51,13 @@ const LS_KEYS = {
 
 let restoredSearchInputs = null;
 
+document.addEventListener("DOMContentLoaded", () => {
+  loadFromLocalStorage();
+  renderSavedFlights();
+  renderSearchInitial();
+  autoLoadCsvFromServer();
+});
+
 function loadFromLocalStorage() {
   try {
     const sf = localStorage.getItem(LS_KEYS.savedFlights);
@@ -66,6 +73,40 @@ function loadFromLocalStorage() {
     if (si) restoredSearchInputs = JSON.parse(si);
   } catch (e) {
     console.warn("Failed to load search inputs:", e);
+  }
+}
+
+async function autoLoadCsvFromServer() {
+  if (loadStatusEl) {
+    safeText(loadStatusEl, "CSVを自動読み込み中…");
+    loadStatusEl.className = "status status-info";
+  }
+
+  try {
+    const res = await fetch("./jal_domestic_schedule_with_fares.csv", { cache: "no-cache" });
+    if (!res.ok) throw new Error(`Failed to fetch CSV: ${res.status}`);
+
+    const buffer = await res.arrayBuffer();
+    let text = "";
+    try { text = new TextDecoder("utf-8", { fatal: true }).decode(buffer); }
+    catch { text = new TextDecoder("shift_jis").decode(buffer); }
+
+    const { headers, rows, delim } = parseCsv(text);
+    safeText(fileNameEl, "jal_domestic_schedule_with_fares.csv");
+    loadFlightsFromCsv(headers, rows, delim);
+    safeText(loadStatusEl, "CSVを自動読み込みしました。");
+    if (loadStatusEl) loadStatusEl.className = "status status-ok";
+    showToast("CSVを自動読み込みしました");
+  } catch (err) {
+    console.error(err);
+    flights = [];
+    safeText(fileNameEl, "（未読込）");
+    safeText(flightCountEl, "0");
+    safeText(loadStatusEl, "CSVの自動読み込みに失敗しました。ファイルを指定してください。");
+    loadStatusEl.className = "status status-error";
+    renderSearchInitial();
+    renderSavedFlights();
+    showToast("自動読み込みに失敗しました。ファイルを選択してください");
   }
 }
 
@@ -899,6 +940,3 @@ clearTransitBtn.addEventListener("click", ()=>{
 generatePlansBtn.addEventListener("click", generatePlans);
 clearSavedBtn.addEventListener("click", clearSavedFlights);
 copyScheduleBtn.addEventListener("click", copyScheduleToClipboard);
-
-renderSearchInitial();
-renderSavedFlights();
